@@ -1476,106 +1476,189 @@
             const container = document.getElementById('scannerContainer');
             const btn = document.getElementById('scannerBtn');
             
-            // CRITICAL: Stop ALL camera tracks completely
-            if (video && video.srcObject) {
-                const stream = video.srcObject;
-                const tracks = stream.getTracks();
-                tracks.forEach(track => {
-                    track.stop();
-                    console.log('Camera track stopped:', track.kind, track.readyState, track.enabled);
-                    // Force disable track
-                    track.enabled = false;
-                });
-                
-                // Clear srcObject completely
-                video.srcObject = null;
-                stream.getTracks().forEach(track => track.stop()); // Double stop for safety
-            }
+            console.log('🔴 STOPPING SCANNER - Starting comprehensive camera cleanup...');
             
-            // Pause and clear video element completely
-            if (video) {
-                video.pause();
-                video.src = '';
-                video.removeAttribute('src');
-                video.removeAttribute('srcObject');
-                video.load(); // Force reload to clear any cached stream
-                
-                // Remove all event listeners
-                video.onloadedmetadata = null;
-                video.onplay = null;
-                video.onpause = null;
-            }
-            
-            // Reset code reader and stop any ongoing decoding
+            // STEP 1: Stop ZXing code reader first (most important)
             if (codeReader) {
                 try {
+                    console.log('🔴 Stopping ZXing code reader...');
                     codeReader.reset();
                     
-                    // Stop any ongoing decoding process
+                    // Force stop any internal streams in ZXing
                     if (codeReader.stream) {
                         const tracks = codeReader.stream.getTracks();
                         tracks.forEach(track => {
+                            console.log('🔴 Stopping ZXing internal track:', track.kind, track.readyState);
                             track.stop();
                             track.enabled = false;
                         });
                         codeReader.stream = null;
                     }
                     
-                    // Clear any internal references
+                    // Clear ZXing video element reference
                     if (codeReader.videoElement) {
                         codeReader.videoElement.srcObject = null;
+                        codeReader.videoElement = null;
+                    }
+                    
+                    // Destroy and recreate code reader to ensure complete cleanup
+                    codeReader = null;
+                    if (typeof ZXing !== 'undefined') {
+                        codeReader = new ZXing.BrowserMultiFormatReader();
                     }
                 } catch (error) {
-                    console.log('Error resetting code reader:', error);
+                    console.log('🔴 Error resetting code reader:', error);
                 }
             }
             
-            // Force stop any remaining media streams globally
+            // STEP 2: Stop video element streams (triple stop for safety)
+            if (video && video.srcObject) {
+                console.log('🔴 Stopping video element streams...');
+                const stream = video.srcObject;
+                
+                // First stop
+                const tracks = stream.getTracks();
+                tracks.forEach(track => {
+                    console.log('🔴 First stop - track:', track.kind, track.readyState, track.enabled);
+                    track.stop();
+                    track.enabled = false;
+                });
+                
+                // Second stop (force)
+                stream.getTracks().forEach(track => {
+                    console.log('🔴 Second stop - track:', track.kind, track.readyState, track.enabled);
+                    track.stop();
+                    track.enabled = false;
+                });
+                
+                // Third stop (paranoid mode)
+                setTimeout(() => {
+                    stream.getTracks().forEach(track => {
+                        console.log('🔴 Third stop (delayed) - track:', track.kind, track.readyState, track.enabled);
+                        track.stop();
+                        track.enabled = false;
+                    });
+                }, 100);
+                
+                // Clear srcObject completely
+                video.srcObject = null;
+            }
+            
+            // STEP 3: Complete video element cleanup
+            if (video) {
+                console.log('🔴 Cleaning video element...');
+                video.pause();
+                video.src = '';
+                video.removeAttribute('src');
+                video.removeAttribute('srcObject');
+                
+                // Remove ALL event listeners
+                video.onloadedmetadata = null;
+                video.onplay = null;
+                video.onpause = null;
+                video.oncanplay = null;
+                video.onloadstart = null;
+                
+                // Force reload to clear cached streams
+                video.load();
+                
+                // Additional cleanup - set video to blank
+                setTimeout(() => {
+                    video.src = 'data:video/mp4;base64,';
+                    video.load();
+                }, 50);
+            }
+            
+            // STEP 4: Global media stream cleanup (nuclear option)
+            console.log('🔴 Global media stream cleanup...');
+            
+            // Try to get all active media devices and stop them
+            if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                navigator.mediaDevices.enumerateDevices().then(devices => {
+                    console.log('🔴 Found devices for cleanup:', devices.length);
+                    
+                    // Force request and immediately stop to trigger cleanup
+                    navigator.mediaDevices.getUserMedia({video: true}).then(stream => {
+                        console.log('🔴 Got stream for cleanup, stopping immediately...');
+                        stream.getTracks().forEach(track => {
+                            console.log('🔴 Cleanup track:', track.kind, track.readyState);
+                            track.stop();
+                            track.enabled = false;
+                        });
+                    }).catch(() => {
+                        console.log('🔴 Cleanup getUserMedia failed (expected)');
+                    });
+                }).catch(() => {
+                    console.log('🔴 Device enumeration failed');
+                });
+            }
+            
+            // STEP 5: Force stop any orphaned streams (brute force)
             try {
-                // This will trigger cleanup of any orphaned streams
-                navigator.mediaDevices.getUserMedia({video: false, audio: false}).catch(() => {
-                    // Ignore errors, this is just for cleanup
+                // This is a hack to force cleanup of any remaining streams
+                const dummyVideo = document.createElement('video');
+                navigator.mediaDevices.getUserMedia({video: true}).then(stream => {
+                    dummyVideo.srcObject = stream;
+                    setTimeout(() => {
+                        stream.getTracks().forEach(track => {
+                            console.log('🔴 Brute force cleanup track:', track.kind);
+                            track.stop();
+                        });
+                        dummyVideo.srcObject = null;
+                    }, 10);
+                }).catch(() => {
+                    // Expected to fail, just for cleanup
                 });
             } catch (error) {
-                console.log('Global stream cleanup error (ignored):', error);
+                console.log('🔴 Brute force cleanup error (ignored):', error);
             }
             
-            // Hide scanner UI
+            // STEP 6: UI cleanup
             if (container) {
                 container.classList.add('hidden');
-            }
-            if (btn) {
-                btn.textContent = '📷 Scan';
-                btn.disabled = false;
-            }
-            isScanning = false;
-            
-            // Clear any permission reset buttons
-            if (container) {
+                
+                // Clear any permission reset buttons
                 const resetBtn = container.querySelector('.permission-reset-btn');
                 if (resetBtn) {
                     resetBtn.remove();
                 }
             }
             
-            // Force garbage collection of media streams (if supported)
+            if (btn) {
+                btn.textContent = '📷 Scan';
+                btn.disabled = false;
+            }
+            
+            isScanning = false;
+            
+            // STEP 7: Force garbage collection and final cleanup
             if (window.gc) {
-                window.gc();
+                setTimeout(() => {
+                    window.gc();
+                    console.log('🔴 Forced garbage collection');
+                }, 200);
             }
             
-            // Additional cleanup: try to enumerate devices to trigger cleanup
-            try {
-                navigator.mediaDevices.enumerateDevices().then(() => {
-                    console.log('Device enumeration completed for cleanup');
-                }).catch(() => {
-                    // Ignore errors
-                });
-            } catch (error) {
-                // Ignore errors
-            }
+            // STEP 8: Multiple delayed cleanup attempts
+            setTimeout(() => {
+                console.log('🔴 Delayed cleanup attempt 1...');
+                if (video && video.srcObject) {
+                    const tracks = video.srcObject.getTracks();
+                    tracks.forEach(track => track.stop());
+                    video.srcObject = null;
+                }
+            }, 500);
             
-            // Show confirmation that camera is stopped
-            showNotification('📷 Kamera dimatikan', 'success');
+            setTimeout(() => {
+                console.log('🔴 Delayed cleanup attempt 2...');
+                // Final nuclear option - try to stop ALL media tracks globally
+                if (navigator.mediaDevices) {
+                    navigator.mediaDevices.getUserMedia({video: false, audio: false}).catch(() => {});
+                }
+            }, 1000);
+            
+            console.log('🔴 SCANNER STOPPED - Camera should be completely off now');
+            showNotification('📷 Kamera dimatikan sepenuhnya', 'success');
         }
 
         // Floating cart management
@@ -3193,5 +3276,5 @@
             });
         }
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9874e28955339cce',t:'MTc1OTI0NzUyMC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9874eeb405cd1333',t:'MTc1OTI0ODAxOC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
