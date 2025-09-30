@@ -1476,34 +1476,52 @@
             const container = document.getElementById('scannerContainer');
             const btn = document.getElementById('scannerBtn');
             
-            // Stop video stream completely
+            // Stop video stream completely and properly
             if (video.srcObject) {
                 const tracks = video.srcObject.getTracks();
                 tracks.forEach(track => {
                     track.stop();
-                    console.log('Camera track stopped:', track.kind);
+                    console.log('Camera track stopped:', track.kind, track.readyState);
                 });
                 video.srcObject = null;
             }
             
-            // Pause and clear video element
+            // Pause and clear video element completely
             video.pause();
             video.src = '';
+            video.removeAttribute('src');
             video.load(); // Force reload to clear any cached stream
             
-            // Reset code reader
+            // Reset code reader and stop any ongoing decoding
             if (codeReader) {
                 try {
                     codeReader.reset();
+                    // Also try to stop any ongoing decoding process
+                    if (codeReader.stream) {
+                        const tracks = codeReader.stream.getTracks();
+                        tracks.forEach(track => track.stop());
+                    }
                 } catch (error) {
                     console.log('Error resetting code reader:', error);
                 }
             }
             
+            // Hide scanner UI
             container.classList.add('hidden');
             btn.textContent = '📷 Scan';
             btn.disabled = false;
             isScanning = false;
+            
+            // Clear any permission reset buttons
+            const resetBtn = container.querySelector('.permission-reset-btn');
+            if (resetBtn) {
+                resetBtn.remove();
+            }
+            
+            // Force garbage collection of media streams (if supported)
+            if (window.gc) {
+                window.gc();
+            }
             
             // Show confirmation that camera is stopped
             showNotification('📷 Kamera dimatikan', 'success');
@@ -2090,6 +2108,18 @@
             document.getElementById('newProductPrice').value = '';
             document.getElementById('newProductStock').value = '';
             document.getElementById('newProductMinStock').value = '5';
+            
+            // Stop scanner if still running (important for barcode scan cancellation)
+            if (isScanning) {
+                stopScanner();
+            }
+            
+            // Clear search field and show all products
+            const searchField = document.getElementById('productSearch');
+            if (searchField) {
+                searchField.value = '';
+            }
+            renderProducts();
         }
 
         function addProduct(event) {
@@ -3096,5 +3126,5 @@
             });
         }
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9874bdf68496aa34',t:'MTc1OTI0NjAyMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9874d39754c69998',t:'MTc1OTI0NjkwOC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
