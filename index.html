@@ -663,6 +663,27 @@
                 codeReader = new ZXing.BrowserMultiFormatReader();
             }
             
+            // Auto-stop scanner when page is hidden or user leaves
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden && isScanning) {
+                    stopScanner();
+                }
+            });
+            
+            // Auto-stop scanner when page is about to unload
+            window.addEventListener('beforeunload', function() {
+                if (isScanning) {
+                    stopScanner();
+                }
+            });
+            
+            // Auto-stop scanner when page loses focus
+            window.addEventListener('blur', function() {
+                if (isScanning) {
+                    stopScanner();
+                }
+            });
+            
             // Add sample products if none exist
             if (products.length === 0) {
                 addSampleProducts();
@@ -762,6 +783,11 @@
         }
 
         function logout() {
+            // Stop scanner before logout
+            if (isScanning) {
+                stopScanner();
+            }
+            
             document.getElementById('loginScreen').classList.remove('hidden');
             document.getElementById('mainApp').classList.add('hidden');
             document.getElementById('pinInput').value = '';
@@ -789,6 +815,11 @@
 
         // Tab management
         function showTab(tabName) {
+            // Stop scanner when leaving kasir tab
+            if (currentTab === 'kasir' && tabName !== 'kasir' && isScanning) {
+                stopScanner();
+            }
+            
             // Hide all tabs
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.add('hidden');
@@ -1445,12 +1476,20 @@
             const container = document.getElementById('scannerContainer');
             const btn = document.getElementById('scannerBtn');
             
-            // Stop video stream
+            // Stop video stream completely
             if (video.srcObject) {
                 const tracks = video.srcObject.getTracks();
-                tracks.forEach(track => track.stop());
+                tracks.forEach(track => {
+                    track.stop();
+                    console.log('Camera track stopped:', track.kind);
+                });
                 video.srcObject = null;
             }
+            
+            // Pause and clear video element
+            video.pause();
+            video.src = '';
+            video.load(); // Force reload to clear any cached stream
             
             // Reset code reader
             if (codeReader) {
@@ -1463,7 +1502,11 @@
             
             container.classList.add('hidden');
             btn.textContent = '📷 Scan';
+            btn.disabled = false;
             isScanning = false;
+            
+            // Show confirmation that camera is stopped
+            showNotification('📷 Kamera dimatikan', 'success');
         }
 
         // Floating cart management
@@ -2512,8 +2555,7 @@
                 timestamp: new Date().toISOString()
             };
             
-            // Show subtle notification for auto-export
-            showNotification(`📤 ${description} - Menyinkronkan...`, 'warning');
+            // Silent auto-export - no loading notification
             
             // Create timeout controller with shorter timeout for auto export
             const controller = new AbortController();
@@ -2536,7 +2578,7 @@
                 // For no-cors mode, we can't read the response
                 // But if we get here without error, the request was sent successfully
                 if (response.type === 'opaque') {
-                    showNotification(`✅ ${description} - Tersinkronkan!`, 'success');
+                    // Silent success - no notification
                     return;
                 }
                 
@@ -2548,7 +2590,7 @@
             })
             .then(data => {
                 if (data && data.success) {
-                    showNotification(`✅ ${description} - Tersinkronkan!`, 'success');
+                    // Silent success - no notification
                 } else if (data) {
                     console.log('Auto export warning:', data.error || 'Unknown error');
                 }
@@ -2558,10 +2600,8 @@
                 clearTimeout(timeoutId);
                 console.log('Auto export failed (silent):', error.message);
                 
-                // Show subtle error notification for auto-export failures
-                if (error.name !== 'AbortError') {
-                    showNotification(`⚠️ ${description} - Sinkronisasi gagal (data tersimpan lokal)`, 'warning');
-                }
+                // Silent failure for auto-export - no notification
+                // Data is still saved locally
             });
         }
 
@@ -2804,8 +2844,7 @@
                 return;
             }
             
-            // Show subtle loading indicator
-            showNotification('🔄 Sinkronisasi data...', 'warning');
+            // Silent auto import - no loading notification
             
             // Your Google Apps Script URL
             const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyOLp3EFK2KWeMiRI86BZpG8PV4fhZuOMUAgj_tkIWsZszggEKSm1JKCIwM8oXa7CgO/exec';
@@ -2855,9 +2894,9 @@
                         renderProducts();
                         updateDashboard();
                         
-                        showNotification('✅ Data berhasil disinkronkan!', 'success');
+                        // Silent success - no notification
                     } else {
-                        showNotification('📊 Data sudah terbaru', 'success');
+                        // Silent - data already up to date
                     }
                 } else {
                     // Silent fail for auto import - just use local data
@@ -2889,8 +2928,7 @@
                 timestamp: new Date().toISOString()
             };
             
-            // Show loading
-            showNotification('⏳ Mengirim data ke Google Sheets...', 'warning');
+            // Silent export - no loading notification
             
             // Create timeout controller
             const controller = new AbortController();
@@ -2913,7 +2951,7 @@
                 // For no-cors mode, we can't read the response
                 // But if we get here without error, the request was sent successfully
                 if (response.type === 'opaque') {
-                    showNotification('✅ Data berhasil dikirim ke Google Sheets!', 'success');
+                    // Silent success - no notification for manual export
                     return;
                 }
                 
@@ -2925,7 +2963,7 @@
             })
             .then(data => {
                 if (data && data.success) {
-                    showNotification('✅ Data berhasil di-export ke Google Sheets!', 'success');
+                    // Silent success - no notification for manual export
                 } else if (data) {
                     throw new Error(data.error || 'Export gagal');
                 }
@@ -2969,8 +3007,7 @@
                 return;
             }
             
-            // Show loading
-            showNotification('⏳ Mengambil data dari Google Sheets...', 'warning');
+            // Silent import - no loading notification
             
             // Use simple GET method with better error handling
             const importUrl = GOOGLE_SCRIPT_URL + '?action=import&timestamp=' + Date.now();
@@ -3028,7 +3065,7 @@
                     updateDashboard();
                     renderTransactionHistory();
                     
-                    showNotification(`✅ Import berhasil! ${importDetails.join(' dan ')} berhasil diimpor dari Google Sheets.`, 'success');
+                    // Silent success - no notification for manual import
                 } else if (data && data.success === false && data.error) {
                     throw new Error(`Google Apps Script error: ${data.error}`);
                 } else {
@@ -3059,5 +3096,5 @@
             });
         }
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9873b15825f6aa34',t:'MTc1OTIzNTAyMC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9874bdf68496aa34',t:'MTc1OTI0NjAyMi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
