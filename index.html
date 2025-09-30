@@ -1476,51 +1476,102 @@
             const container = document.getElementById('scannerContainer');
             const btn = document.getElementById('scannerBtn');
             
-            // Stop video stream completely and properly
-            if (video.srcObject) {
-                const tracks = video.srcObject.getTracks();
+            // CRITICAL: Stop ALL camera tracks completely
+            if (video && video.srcObject) {
+                const stream = video.srcObject;
+                const tracks = stream.getTracks();
                 tracks.forEach(track => {
                     track.stop();
-                    console.log('Camera track stopped:', track.kind, track.readyState);
+                    console.log('Camera track stopped:', track.kind, track.readyState, track.enabled);
+                    // Force disable track
+                    track.enabled = false;
                 });
+                
+                // Clear srcObject completely
                 video.srcObject = null;
+                stream.getTracks().forEach(track => track.stop()); // Double stop for safety
             }
             
             // Pause and clear video element completely
-            video.pause();
-            video.src = '';
-            video.removeAttribute('src');
-            video.load(); // Force reload to clear any cached stream
+            if (video) {
+                video.pause();
+                video.src = '';
+                video.removeAttribute('src');
+                video.removeAttribute('srcObject');
+                video.load(); // Force reload to clear any cached stream
+                
+                // Remove all event listeners
+                video.onloadedmetadata = null;
+                video.onplay = null;
+                video.onpause = null;
+            }
             
             // Reset code reader and stop any ongoing decoding
             if (codeReader) {
                 try {
                     codeReader.reset();
-                    // Also try to stop any ongoing decoding process
+                    
+                    // Stop any ongoing decoding process
                     if (codeReader.stream) {
                         const tracks = codeReader.stream.getTracks();
-                        tracks.forEach(track => track.stop());
+                        tracks.forEach(track => {
+                            track.stop();
+                            track.enabled = false;
+                        });
+                        codeReader.stream = null;
+                    }
+                    
+                    // Clear any internal references
+                    if (codeReader.videoElement) {
+                        codeReader.videoElement.srcObject = null;
                     }
                 } catch (error) {
                     console.log('Error resetting code reader:', error);
                 }
             }
             
+            // Force stop any remaining media streams globally
+            try {
+                // This will trigger cleanup of any orphaned streams
+                navigator.mediaDevices.getUserMedia({video: false, audio: false}).catch(() => {
+                    // Ignore errors, this is just for cleanup
+                });
+            } catch (error) {
+                console.log('Global stream cleanup error (ignored):', error);
+            }
+            
             // Hide scanner UI
-            container.classList.add('hidden');
-            btn.textContent = '📷 Scan';
-            btn.disabled = false;
+            if (container) {
+                container.classList.add('hidden');
+            }
+            if (btn) {
+                btn.textContent = '📷 Scan';
+                btn.disabled = false;
+            }
             isScanning = false;
             
             // Clear any permission reset buttons
-            const resetBtn = container.querySelector('.permission-reset-btn');
-            if (resetBtn) {
-                resetBtn.remove();
+            if (container) {
+                const resetBtn = container.querySelector('.permission-reset-btn');
+                if (resetBtn) {
+                    resetBtn.remove();
+                }
             }
             
             // Force garbage collection of media streams (if supported)
             if (window.gc) {
                 window.gc();
+            }
+            
+            // Additional cleanup: try to enumerate devices to trigger cleanup
+            try {
+                navigator.mediaDevices.enumerateDevices().then(() => {
+                    console.log('Device enumeration completed for cleanup');
+                }).catch(() => {
+                    // Ignore errors
+                });
+            } catch (error) {
+                // Ignore errors
             }
             
             // Show confirmation that camera is stopped
@@ -2109,10 +2160,26 @@
             document.getElementById('newProductStock').value = '';
             document.getElementById('newProductMinStock').value = '5';
             
-            // Stop scanner if still running (important for barcode scan cancellation)
+            // CRITICAL: Force stop scanner and all camera streams when canceling
             if (isScanning) {
                 stopScanner();
             }
+            
+            // Additional camera cleanup - force stop any remaining streams
+            const video = document.getElementById('scanner-video');
+            if (video && video.srcObject) {
+                const tracks = video.srcObject.getTracks();
+                tracks.forEach(track => {
+                    track.stop();
+                    console.log('Force stopped camera track on modal cancel:', track.kind, track.readyState);
+                });
+                video.srcObject = null;
+            }
+            
+            // Force cleanup any global media streams
+            navigator.mediaDevices.getUserMedia({video: false, audio: false}).catch(() => {
+                // This is just to trigger cleanup, ignore errors
+            });
             
             // Clear search field and show all products
             const searchField = document.getElementById('productSearch');
@@ -3126,5 +3193,5 @@
             });
         }
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9874d39754c69998',t:'MTc1OTI0NjkwOC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9874e28955339cce',t:'MTc1OTI0NzUyMC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
